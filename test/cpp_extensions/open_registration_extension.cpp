@@ -24,8 +24,6 @@
 
 #include <unordered_map>
 
-static uint64_t add_counter = 0;
-static uint64_t last_saved_value = 0;
 static c10::DeviceIndex custom_device_index = 0;
 
 static uint64_t abs_counter = 0;
@@ -233,13 +231,6 @@ bool custom_storageImpl_called() {
   return false;
 }
 
-// basic dummy add function
-at::Tensor custom_add_Tensor(const at::Tensor& self, const at::Tensor& other, const at::Scalar& alpha) {
-  add_counter += 1;
-  // Since this custom device is just for testing, not bothering to implement kernels.
-  return at::empty(self.sizes(), self.options());
-}
-
 at::Tensor custom__copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
     return dst.copy_(self, false);
 }
@@ -319,7 +310,6 @@ custom_scaled_dot_product_fused_attention_overrideable_backward(
 // This macro registers your kernels to the PyTorch Dispatcher.
 // More details on the dispatcher can be found at http://blog.ezyang.com/2020/09/lets-talk-about-the-pytorch-dispatcher/.
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
-  m.impl("add.Tensor", &custom_add_Tensor);
   m.impl("_copy_from_and_resize", &custom__copy_from_and_resize);
   m.impl("set_.source_Storage", &custom_set_source_Storage);
   m.impl("quantize_per_tensor", at::native::quantize_per_tensor);
@@ -345,15 +335,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
 // See `c10/core/impl/DeviceGuardImplInterface.h:C10_REGISTER_GUARD_IMPL`.
 c10::Device get_custom_device() {
   return c10::Device(c10::DeviceType::PrivateUse1, 0);
-}
-
-bool custom_add_called() {
-  bool called = false;
-  if (add_counter > last_saved_value) {
-    called = true;
-    last_saved_value = add_counter;
-  }
-  return called;
 }
 
 void set_custom_device_index(c10::DeviceIndex device_index) {
@@ -414,7 +395,6 @@ at::Tensor custom_autograd_fn_aliasing(at::Tensor x) {
 // The implementation in this file maps directly to the `PrivateUse1` device type.
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("custom_device", &get_custom_device, "get custom device object");
-    m.def("custom_add_called", &custom_add_called, "check if our custom add function was called");
     m.def("set_custom_device_index", &set_custom_device_index, "set custom device index");
     m.def("custom_storage_registry", &custom_storage_registry, "set custom storageImpl creat method");
     m.def("custom_storageImpl_called", &custom_storageImpl_called, "check if our custom abs function was called");

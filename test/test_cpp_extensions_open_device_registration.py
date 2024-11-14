@@ -29,6 +29,25 @@ from torch.utils.cpp_extension import CUDA_HOME, ROCM_HOME
 TEST_CUDA = TEST_CUDA and CUDA_HOME is not None
 TEST_ROCM = TEST_CUDA and torch.version.hip is not None and ROCM_HOME is not None
 
+add_counter = 0
+last_saved_value = 0
+
+
+def custom_add_called():
+    global last_saved_value
+    if add_counter > last_saved_value:
+        last_saved_value = add_counter
+        return True
+    return False
+
+
+def custom_add_tensor(self: torch.Tensor, other, alpha=1):
+    global add_counter
+    add_counter += 1
+    return torch.empty(
+        self.size(), dtype=self.dtype, device=self.device, layout=self.layout
+    )
+
 
 def generate_faked_module():
     class _OpenRegMod:
@@ -109,25 +128,28 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         generate_faked_module_methods()
 
     def test_base_device_registration(self):
-        self.assertFalse(self.module.custom_add_called())
-        # create a tensor using our custom device object
-        device = self.module.custom_device()
-        x = torch.empty(4, 4, device=device)
-        y = torch.empty(4, 4, device=device)
-        # Check that our device is correct.
-        self.assertTrue(x.device == device)
-        self.assertFalse(x.is_cpu)
-        self.assertFalse(self.module.custom_add_called())
-        # calls out custom add kernel, registered to the dispatcher
-        z = x + y
-        # check that it was called
-        self.assertTrue(self.module.custom_add_called())
-        z_cpu = z.to(device="cpu")
-        # Check that our cross-device copy correctly copied the data to cpu
-        self.assertTrue(z_cpu.is_cpu)
-        self.assertFalse(z.is_cpu)
-        self.assertTrue(z.device == device)
-        self.assertEqual(z, z_cpu)
+        with torch.library._scoped_library("aten", "IMPL") as lib:
+            lib.impl("add.Tensor", custom_add_tensor, dispatch_key="PrivateUse1")
+
+            self.assertFalse(custom_add_called())
+            # create a tensor using our custom device object
+            device = self.module.custom_device()
+            x = torch.empty(4, 4, device=device)
+            y = torch.empty(4, 4, device=device)
+            # Check that our device is correct.
+            self.assertTrue(x.device == device)
+            self.assertFalse(x.is_cpu)
+            self.assertFalse(custom_add_called())
+            # calls out custom add kernel, registered to the dispatcher
+            z = x + y
+            # check that it was called
+            self.assertTrue(custom_add_called())
+            z_cpu = z.to(device="cpu")
+            # Check that our cross-device copy correctly copied the data to cpu
+            self.assertTrue(z_cpu.is_cpu)
+            self.assertFalse(z.is_cpu)
+            self.assertTrue(z.device == device)
+            self.assertEqual(z, z_cpu)
 
     def test_common_registration(self):
         # check unsupported device and duplicated registration
@@ -168,17 +190,20 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         self.assertTrue(hasattr(torch.nn.utils.rnn.PackedSequence, "openreg"))
 
     def test_open_device_generator_registration_and_hooks(self):
-        device = self.module.custom_device()
-        # None of our CPU operations should call the custom add function.
-        self.assertFalse(self.module.custom_add_called())
+        with torch.library._scoped_library("aten", "IMPL") as lib:
+            lib.impl("add.Tensor", custom_add_tensor, dispatch_key="PrivateUse1")
 
-        gen = torch.Generator(device=device)
-        self.assertTrue(gen.device == device)
+            device = self.module.custom_device()
+            # None of our CPU operations should call the custom add function.
+            self.assertFalse(custom_add_called())
 
-        default_gen = self.module.default_generator(0)
-        self.assertTrue(
-            default_gen.device.type == torch._C._get_privateuse1_backend_name()
-        )
+            gen = torch.Generator(device=device)
+            self.assertTrue(gen.device == device)
+
+            default_gen = self.module.default_generator(0)
+            self.assertTrue(
+                default_gen.device.type == torch._C._get_privateuse1_backend_name()
+            )
 
     def test_open_device_dispatchstub(self):
         # test kernels could be reused by privateuse1 backend through dispatchstub
@@ -220,47 +245,50 @@ class TestCppExtensionOpenRgistration(common.TestCase):
             pass
 
     def test_open_device_tensor(self):
-        device = self.module.custom_device()
+        with torch.library._scoped_library("aten", "IMPL") as lib:
+            lib.impl("add.Tensor", custom_add_tensor, dispatch_key="PrivateUse1")
 
-        # check whether print tensor.type() meets the expectation
-        dtypes = {
-            torch.bool: "torch.openreg.BoolTensor",
-            torch.double: "torch.openreg.DoubleTensor",
-            torch.float32: "torch.openreg.FloatTensor",
-            torch.half: "torch.openreg.HalfTensor",
-            torch.int32: "torch.openreg.IntTensor",
-            torch.int64: "torch.openreg.LongTensor",
-            torch.int8: "torch.openreg.CharTensor",
-            torch.short: "torch.openreg.ShortTensor",
-            torch.uint8: "torch.openreg.ByteTensor",
-        }
-        for tt, dt in dtypes.items():
-            test_tensor = torch.empty(4, 4, dtype=tt, device=device)
-            self.assertTrue(test_tensor.type() == dt)
+            device = self.module.custom_device()
 
-        # check whether the attributes and methods of the corresponding custom backend are generated correctly
-        x = torch.empty(4, 4)
-        self.assertFalse(x.is_openreg)
+            # check whether print tensor.type() meets the expectation
+            dtypes = {
+                torch.bool: "torch.openreg.BoolTensor",
+                torch.double: "torch.openreg.DoubleTensor",
+                torch.float32: "torch.openreg.FloatTensor",
+                torch.half: "torch.openreg.HalfTensor",
+                torch.int32: "torch.openreg.IntTensor",
+                torch.int64: "torch.openreg.LongTensor",
+                torch.int8: "torch.openreg.CharTensor",
+                torch.short: "torch.openreg.ShortTensor",
+                torch.uint8: "torch.openreg.ByteTensor",
+            }
+            for tt, dt in dtypes.items():
+                test_tensor = torch.empty(4, 4, dtype=tt, device=device)
+                self.assertTrue(test_tensor.type() == dt)
 
-        x = x.openreg(torch.device("openreg"))
-        self.assertFalse(self.module.custom_add_called())
-        self.assertTrue(x.is_openreg)
+            # check whether the attributes and methods of the corresponding custom backend are generated correctly
+            x = torch.empty(4, 4)
+            self.assertFalse(x.is_openreg)
 
-        # test different device type input
-        y = torch.empty(4, 4)
-        self.assertFalse(y.is_openreg)
+            x = x.openreg(torch.device("openreg"))
+            self.assertFalse(custom_add_called())
+            self.assertTrue(x.is_openreg)
 
-        y = y.openreg(torch.device("openreg:0"))
-        self.assertFalse(self.module.custom_add_called())
-        self.assertTrue(y.is_openreg)
+            # test different device type input
+            y = torch.empty(4, 4)
+            self.assertFalse(y.is_openreg)
 
-        # test different device type input
-        z = torch.empty(4, 4)
-        self.assertFalse(z.is_openreg)
+            y = y.openreg(torch.device("openreg:0"))
+            self.assertFalse(custom_add_called())
+            self.assertTrue(y.is_openreg)
 
-        z = z.openreg(0)
-        self.assertFalse(self.module.custom_add_called())
-        self.assertTrue(z.is_openreg)
+            # test different device type input
+            z = torch.empty(4, 4)
+            self.assertFalse(z.is_openreg)
+
+            z = z.openreg(0)
+            self.assertFalse(custom_add_called())
+            self.assertTrue(z.is_openreg)
 
     def test_open_device_packed_sequence(self):
         device = self.module.custom_device()  # noqa: F841
@@ -272,50 +300,53 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         self.assertTrue(input_openreg.is_openreg)
 
     def test_open_device_storage(self):
-        # check whether the attributes and methods for storage of the corresponding custom backend are generated correctly
-        x = torch.empty(4, 4)
-        z1 = x.storage()
-        self.assertFalse(z1.is_openreg)
+        with torch.library._scoped_library("aten", "IMPL") as lib:
+            lib.impl("add.Tensor", custom_add_tensor, dispatch_key="PrivateUse1")
 
-        z1 = z1.openreg()
-        self.assertFalse(self.module.custom_add_called())
-        self.assertTrue(z1.is_openreg)
+            # check whether the attributes and methods for storage of the corresponding custom backend are generated correctly
+            x = torch.empty(4, 4)
+            z1 = x.storage()
+            self.assertFalse(z1.is_openreg)
 
-        with self.assertRaisesRegex(RuntimeError, "Invalid device"):
-            z1.openreg(torch.device("cpu"))
+            z1 = z1.openreg()
+            self.assertFalse(custom_add_called())
+            self.assertTrue(z1.is_openreg)
 
-        z1 = z1.cpu()
-        self.assertFalse(self.module.custom_add_called())
-        self.assertFalse(z1.is_openreg)
+            with self.assertRaisesRegex(RuntimeError, "Invalid device"):
+                z1.openreg(torch.device("cpu"))
 
-        z1 = z1.openreg(device="openreg:0", non_blocking=False)
-        self.assertFalse(self.module.custom_add_called())
-        self.assertTrue(z1.is_openreg)
+            z1 = z1.cpu()
+            self.assertFalse(custom_add_called())
+            self.assertFalse(z1.is_openreg)
 
-        with self.assertRaisesRegex(RuntimeError, "Invalid device"):
-            z1.openreg(device="cuda:0", non_blocking=False)
+            z1 = z1.openreg(device="openreg:0", non_blocking=False)
+            self.assertFalse(custom_add_called())
+            self.assertTrue(z1.is_openreg)
 
-        # check UntypedStorage
-        y = torch.empty(4, 4)
-        z2 = y.untyped_storage()
-        self.assertFalse(z2.is_openreg)
+            with self.assertRaisesRegex(RuntimeError, "Invalid device"):
+                z1.openreg(device="cuda:0", non_blocking=False)
 
-        z2 = z2.openreg()
-        self.assertFalse(self.module.custom_add_called())
-        self.assertTrue(z2.is_openreg)
+            # check UntypedStorage
+            y = torch.empty(4, 4)
+            z2 = y.untyped_storage()
+            self.assertFalse(z2.is_openreg)
 
-        # check custom StorageImpl create
-        self.module.custom_storage_registry()
+            z2 = z2.openreg()
+            self.assertFalse(custom_add_called())
+            self.assertTrue(z2.is_openreg)
 
-        z3 = y.untyped_storage()
-        self.assertFalse(self.module.custom_storageImpl_called())
+            # check custom StorageImpl create
+            self.module.custom_storage_registry()
 
-        z3 = z3.openreg()
-        self.assertTrue(self.module.custom_storageImpl_called())
-        self.assertFalse(self.module.custom_storageImpl_called())
+            z3 = y.untyped_storage()
+            self.assertFalse(self.module.custom_storageImpl_called())
 
-        z3 = z3[0:3]
-        self.assertTrue(self.module.custom_storageImpl_called())
+            z3 = z3.openreg()
+            self.assertTrue(self.module.custom_storageImpl_called())
+            self.assertFalse(self.module.custom_storageImpl_called())
+
+            z3 = z3[0:3]
+            self.assertTrue(self.module.custom_storageImpl_called())
 
     @unittest.skipIf(
         sys.version_info >= (3, 13),
