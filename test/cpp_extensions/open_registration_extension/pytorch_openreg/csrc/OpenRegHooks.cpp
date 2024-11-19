@@ -123,6 +123,7 @@ struct OpenRegHooksInterface : public at::PrivateUse1HooksInterface {
 };
 
 int register_hook() {
+  std::cout << "hello from openreghooks.cpp" << std::endl;
   at::RegisterPrivateUse1HooksInterface(new OpenRegHooksInterface(OpenRegHooksArgs{}));
   return 0;
 }

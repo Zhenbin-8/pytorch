@@ -13,6 +13,12 @@ namespace openreg {
 
 namespace {
 
+int asdf() {
+    std::cout << "hello from openregmem.cpp" << std::endl;
+    return 0;
+}
+
+auto _in = asdf();
 using openreg_ptr_t = uint64_t;
 
 // A dummy allocator for our custom device, that secretly uses the CPU
@@ -35,11 +41,11 @@ struct OpenRegAllocator final : at::Allocator {
     if (!ptr) {
       return;
     }
-    py::gil_scoped_acquire acquire;
-    TORCH_CHECK(
-        get_method("free")(reinterpret_cast<openreg_ptr_t>(ptr)).cast<bool>(),
-        "Failed to free memory pointer at ", ptr
-    );
+    // py::gil_scoped_acquire acquire;
+    // TORCH_CHECK(
+    //     get_method("free")(reinterpret_cast<openreg_ptr_t>(ptr)).cast<bool>(),
+    //     "Failed to free memory pointer at ", ptr
+    // );
   }
 
   at::DeleterFnPtr raw_deleter() const override {

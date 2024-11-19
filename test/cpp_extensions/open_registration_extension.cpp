@@ -33,15 +33,15 @@ static uint64_t last_abs_saved_value = 0;
 
 static uint64_t storageImpl_counter = 0;
 static uint64_t last_storageImpl_saved_value = 0;
-// register guard
-namespace at {
-namespace detail {
+// // register guard
+// namespace at {
+// namespace detail {
 
-C10_REGISTER_GUARD_IMPL(
-    PrivateUse1,
-    c10::impl::NoOpDeviceGuardImpl<DeviceType::PrivateUse1>);
+// C10_REGISTER_GUARD_IMPL(
+//     PrivateUse1,
+//     c10::impl::NoOpDeviceGuardImpl<DeviceType::PrivateUse1>);
 
-}} // namespace at::detail
+// }} // namespace at::detail
 
 namespace {
 
@@ -280,7 +280,7 @@ struct DummyCustomAllocator final : at::Allocator {
 
 // Register our dummy allocator
 static DummyCustomAllocator global_custom_alloc;
-REGISTER_ALLOCATOR(c10::DeviceType::PrivateUse1, &global_custom_alloc);
+// REGISTER_ALLOCATOR(c10::DeviceType::PrivateUse1, &global_custom_alloc);
 
 // basic dummy empty function, so we can directly construct tensors on the custom device
 // This dummy test device will just use the CPU allocator, and ignores pinned memory.
@@ -378,7 +378,7 @@ at::Tensor custom__copy_from(const at::Tensor& self, const at::Tensor& dst, bool
 }
 
 at::Tensor custom__copy_from_and_resize(const at::Tensor& self, const at::Tensor& dst) {
-  return custom__copy_from(self, dst, false);
+    return dst.copy_(self, false);;
 }
 
 at::Tensor custom_empty_strided(c10::IntArrayRef size,
@@ -504,23 +504,28 @@ custom_scaled_dot_product_fused_attention_overrideable_backward(
 // This macro registers your kernels to the PyTorch Dispatcher.
 // More details on the dispatcher can be found at http://blog.ezyang.com/2020/09/lets-talk-about-the-pytorch-dispatcher/.
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
-  m.impl("abs.out", &custom_abs_out);
+  // m.impl("abs.out", &custom_abs_out);
   m.impl("add.Tensor", &custom_add_Tensor);
-  m.impl("empty.memory_format", &custom_empty_symint);
-  m.impl("fill_.Scalar", &custom_fill__scalar);
-  m.impl("_copy_from", &custom__copy_from);
+  // m.impl("empty.memory_format", &custom_empty_symint);
+  // m.impl("fill_.Scalar", &custom_fill__scalar);
+  // m.impl("_copy_from", &custom__copy_from);
   m.impl("_copy_from_and_resize", &custom__copy_from_and_resize);
-  m.impl("empty_strided", &custom_empty_strided);
+  // m.impl("empty_strided", &custom_empty_strided);
   m.impl("set_.source_Storage", &custom_set_source_Storage);
-  m.impl("set_.source_Storage_storage_offset",&custom_set_source_Storage_storage_offset);
-  m.impl("resize_", &custom_resize_);
-  m.impl("as_strided", at::native::as_strided_tensorimpl);
+  // m.impl("set_.source_Storage_storage_offset",&custom_set_source_Storage_storage_offset);
+  // m.impl("resize_", &custom_resize_);
+  // m.impl("as_strided", at::native::as_strided_tensorimpl);
   m.impl("quantize_per_tensor", at::native::quantize_per_tensor);
   m.impl("_fused_sdp_choice", &_fused_sdp_choice_privateuse1);
   m.impl("_scaled_dot_product_fused_attention_overrideable", &custom_scaled_dot_product_fused_attention_overrideable);
   m.impl("_scaled_dot_product_fused_attention_overrideable_backward", &custom_scaled_dot_product_fused_attention_overrideable_backward);
 }
+int asdf() {
+    std::cout << "hello from open_registration.cpp" << std::endl;
+    return 0;
+}
 
+auto _in = asdf();
 void custom_cpu_fallback(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
   at::native::cpu_fallback(op, stack);
 }
@@ -602,25 +607,25 @@ struct FooHooksInterface : public at::PrivateUse1HooksInterface {
     }
 };
 
-TORCH_DECLARE_REGISTRY(PrivateUse1HooksRegistry, FooHooksInterface, FooHooksArgs);
-C10_DEFINE_REGISTRY(PrivateUse1HooksRegistry, FooHooksInterface, FooHooksArgs)
+// TORCH_DECLARE_REGISTRY(PrivateUse1HooksRegistry, FooHooksInterface, FooHooksArgs);
+// C10_DEFINE_REGISTRY(PrivateUse1HooksRegistry, FooHooksInterface, FooHooksArgs)
 // Using Create function to get PrivateUse1HooksInterface point from PrivateUse1HooksRegistry class.
-C10_REGISTER_TYPED_CLASS(PrivateUse1HooksRegistry, "FooHooks", FooHooksInterface)
+// C10_REGISTER_TYPED_CLASS(PrivateUse1HooksRegistry, "FooHooks", FooHooksInterface)
 
 static at::PrivateUse1HooksInterface* privateuse1_hooks_local = nullptr;
-static at::PrivateUse1HooksInterface* get_private_hooks() {
-  static c10::once_flag once;
-  c10::call_once(once, [] {
-    privateuse1_hooks_local = PrivateUse1HooksRegistry()->Create("FooHooks", {}).release();
-    if (!privateuse1_hooks_local) {
-      privateuse1_hooks_local = new FooHooksInterface(FooHooksArgs{});
-    }
-  });
-  return privateuse1_hooks_local;
-}
+// static at::PrivateUse1HooksInterface* get_private_hooks() {
+//   static c10::once_flag once;
+//   c10::call_once(once, [] {
+//     privateuse1_hooks_local = PrivateUse1HooksRegistry()->Create("FooHooks", {}).release();
+//     if (!privateuse1_hooks_local) {
+//       privateuse1_hooks_local = new FooHooksInterface(FooHooksArgs{});
+//     }
+//   });
+//   return privateuse1_hooks_local;
+// }
 
 void register_hook() {
-  at::RegisterPrivateUse1HooksInterface(get_private_hooks());
+  // at::RegisterPrivateUse1HooksInterface(get_private_hooks());
 }
 
 bool is_register_hook() {
@@ -682,7 +687,7 @@ at::Tensor custom_autograd_fn_aliasing(at::Tensor x) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("custom_device", &get_custom_device, "get custom device object");
     m.def("custom_add_called", &custom_add_called, "check if our custom add function was called");
-    m.def("register_generator_first", &register_generator_first, "register generator for custom device firstly");
+    // m.def("register_generator_first", &register_generator_first, "register generator for custom device firstly");
     m.def("register_generator_second", &register_generator_second, "register generator for custom device secondly");
     m.def("set_custom_device_index", &set_custom_device_index, "set custom device index");
     m.def("custom_storage_registry", &custom_storage_registry, "set custom storageImpl creat method");
@@ -690,8 +695,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("custom_set_backend_meta", &custom_set_backend_meta, "a fake set tensor BackendMeta function");
     m.def("check_backend_meta", &check_backend_meta, "check if BackendMeta serialization correctly");
     m.def("custom_serialization_registry", &custom_serialization_registry, "register custom serialization function");
-    m.def("register_hook", &register_hook, "register_hook for privateuse1");
-    m.def("is_register_hook", &is_register_hook, "is_register_hook for privateuse1");
+    // m.def("register_hook", &register_hook, "register_hook for privateuse1");
+    // m.def("is_register_hook", &is_register_hook, "is_register_hook for privateuse1");
     m.def("default_generator", &default_generator, "default_generator for privateuse1");
     m.def("fallback_with_undefined_tensor", &fallback_with_undefined_tensor, "fallback_with_undefined_tensor for privateuse1");
 
