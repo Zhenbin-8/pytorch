@@ -5,7 +5,6 @@ import io
 import os
 import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from typing import Union
@@ -44,7 +43,7 @@ def generate_faked_module_methods():
         return 1
 
     def get_rng_state(
-        device: Union[int, str, torch.device] = "openreg"
+        device: Union[int, str, torch.device] = "openreg",
     ) -> torch.Tensor:
         # create a tensor using our custom device object.
         return torch.empty(4, 4, device="openreg")
@@ -60,13 +59,13 @@ def generate_faked_module_methods():
     def current_device():
         return 0
 
-    setattr(torch.openreg, "device_count", device_count)
-    setattr(torch.openreg, "get_rng_state", get_rng_state)
-    setattr(torch.openreg, "set_rng_state", set_rng_state)
-    setattr(torch.openreg, "is_available", is_available)
-    setattr(torch.openreg, "current_device", current_device)
-    setattr(torch.openreg, "_lazy_init", lambda: None)
-    setattr(torch.openreg, "is_initialized", lambda: True)
+    torch.openreg.device_count = device_count
+    torch.openreg.get_rng_state = get_rng_state
+    torch.openreg.set_rng_state = set_rng_state
+    torch.openreg.is_available = is_available
+    torch.openreg.current_device = current_device
+    torch.openreg._lazy_init = lambda: None
+    torch.openreg.is_initialized = lambda: True
 
 
 def build_and_import_openreg():
@@ -230,7 +229,9 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         self.assertEqual(output_data, openreg_output_data.cpu())
 
     def test_open_device_quantized(self):
-        input_data = torch.randn(3, 4, 5, dtype=torch.float32, device="cpu").to("openreg")
+        input_data = torch.randn(3, 4, 5, dtype=torch.float32, device="cpu").to(
+            "openreg"
+        )
         quantized_tensor = torch.quantize_per_tensor(input_data, 0.1, 10, torch.qint8)
         self.assertEqual(quantized_tensor.device, torch.device("openreg:0"))
         self.assertEqual(quantized_tensor.dtype, torch.qint8)
@@ -380,7 +381,9 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         self.assertEqual(torch.serialization.location_tag(storage), "openreg:0")
 
         cpu_storage = torch.empty(4, 4).storage()
-        openreg_storage = torch.serialization.default_restore_location(cpu_storage, "openreg:0")
+        openreg_storage = torch.serialization.default_restore_location(
+            cpu_storage, "openreg:0"
+        )
         self.assertTrue(openreg_storage.is_openreg)
 
         # test tensor MetaData serialization
