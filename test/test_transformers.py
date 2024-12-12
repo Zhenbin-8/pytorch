@@ -3,7 +3,7 @@
 import contextlib
 from functools import partial
 from collections import namedtuple
-from pathlib import Path
+import pytorch_openreg  # noqa: F401
 import sys
 import os
 import torch
@@ -25,7 +25,6 @@ from torch.testing._internal.common_nn import NNTestCase
 from torch.testing._internal.common_utils import (
     IS_FBCODE,
     TEST_WITH_ROCM,
-    shell,
     skipIfRocm,
     skipIfTorchDynamo,
     TEST_FAIRSEQ,
@@ -4014,26 +4013,12 @@ class TestAttnBias(NNTestCase):
             scaled_dot_product_attention(query, key, value, attn_mask=attn_bias, is_causal=True, dropout_p=0.0)
 
 
-def build_and_import_openreg():
-    openreg_dir = os.path.join(
-        Path(__file__).resolve().parent, "cpp_extensions", "open_registration_extension"
-    )
-    cmd = [sys.executable, "setup.py", "develop"]
-
-    if shell(cmd, cwd=openreg_dir, env=os.environ) != 0:
-        raise RuntimeError("Building openreg failed")
-
-    import pytorch_openreg  # noqa: F401
-
-
 @unittest.skipIf(TEST_XPU, "XPU does not support cppextension currently")
 @unittest.skipIf(IS_FBCODE, "Ninja is required to load C++ extensions and it's not compatible with Buck ")
 @unittest.skip("TODO: This test is broken and should be moved into a dedicated process for registering new extensions")
 class TestSDPAPrivateUse1Only(NNTestCase):
     @classmethod
     def setUpClass(cls):
-        build_and_import_openreg()
-
         torch.testing._internal.common_utils.remove_cpp_extensions_build_root()
         cls.module = torch.utils.cpp_extension.load(
             name="custom_device_extension",

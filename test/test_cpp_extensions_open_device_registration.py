@@ -6,11 +6,11 @@ import os
 import sys
 import tempfile
 import unittest
-from pathlib import Path
 from typing import Union
 from unittest.mock import patch
 
 import numpy as np
+import pytorch_openreg  # noqa: F401
 
 import torch
 import torch.testing._internal.common_utils as common
@@ -18,7 +18,6 @@ import torch.utils.cpp_extension
 from torch.serialization import safe_globals
 from torch.testing._internal.common_utils import (
     IS_ARM64,
-    shell,
     skipIfTorchDynamo,
     TemporaryFileName,
     TEST_CUDA,
@@ -68,18 +67,6 @@ def generate_faked_module_methods():
     torch.openreg.is_initialized = lambda: True
 
 
-def build_and_import_openreg():
-    openreg_dir = os.path.join(
-        Path(__file__).resolve().parent, "cpp_extensions", "open_registration_extension"
-    )
-    cmd = [sys.executable, "setup.py", "develop"]
-
-    if shell(cmd, cwd=openreg_dir, env=os.environ) != 0:
-        raise RuntimeError("Building openreg failed")
-
-    import pytorch_openreg  # noqa: F401
-
-
 @unittest.skipIf(IS_ARM64, "Does not work on arm")
 @unittest.skipIf(TEST_XPU, "XPU does not support cppextension currently")
 @torch.testing._internal.common_utils.markDynamoStrictTest
@@ -106,8 +93,6 @@ class TestCppExtensionOpenRgistration(common.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        build_and_import_openreg()
-
         torch.testing._internal.common_utils.remove_cpp_extensions_build_root()
 
         cls.module = torch.utils.cpp_extension.load(
@@ -542,6 +527,7 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         # call _fused_adamw_ with undefined tensor.
         self.module.fallback_with_undefined_tensor()
 
+    @skipIfTorchDynamo()
     @unittest.skipIf(
         np.__version__ < "1.25",
         "versions < 1.25 serialize dtypes differently from how it's serialized in data_legacy_numpy",
