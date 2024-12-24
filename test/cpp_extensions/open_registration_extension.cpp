@@ -24,11 +24,6 @@
 
 #include <unordered_map>
 
-static c10::DeviceIndex custom_device_index = 0;
-
-static uint64_t abs_counter = 0;
-static uint64_t last_abs_saved_value = 0;
-
 static uint64_t storageImpl_counter = 0;
 static uint64_t last_storageImpl_saved_value = 0;
 
@@ -328,19 +323,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("triu_indices", torch::CppFunction::makeFromBoxedFunction<&custom_cpu_fallback>());
 }
 
-// This basic implementation doesn't bother dealing with different device indices
-// (e.g. custom_device:0 vs. custom_device:1).
-// We could do that by letting the user pass in a device index in our exposed device function.
-// Note that if you do that, you'll also need to register a device guard to core.
-// See `c10/core/impl/DeviceGuardImplInterface.h:C10_REGISTER_GUARD_IMPL`.
-c10::Device get_custom_device() {
-  return c10::Device(c10::DeviceType::PrivateUse1, 0);
-}
-
-void set_custom_device_index(c10::DeviceIndex device_index) {
-  custom_device_index = device_index;
-}
-
 const at::Generator& default_generator(c10::DeviceIndex device_index) {
   return at::globalContext().defaultGenerator(at::Device(c10::DeviceType::PrivateUse1, device_index));;
 }
@@ -394,8 +376,6 @@ at::Tensor custom_autograd_fn_aliasing(at::Tensor x) {
 // that's implemented in C++.
 // The implementation in this file maps directly to the `PrivateUse1` device type.
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("custom_device", &get_custom_device, "get custom device object");
-    m.def("set_custom_device_index", &set_custom_device_index, "set custom device index");
     m.def("custom_storage_registry", &custom_storage_registry, "set custom storageImpl creat method");
     m.def("custom_storageImpl_called", &custom_storageImpl_called, "check if our custom abs function was called");
     m.def("custom_set_backend_meta", &custom_set_backend_meta, "a fake set tensor BackendMeta function");

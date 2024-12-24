@@ -381,11 +381,11 @@ class TestCppExtensionOpenRgistration(common.TestCase):
         "Temporarily disable due to the tiny differences between clang++ and g++ in defining static variable in inline function"
     )
     def test_open_device_serialization(self):
-        self.module.set_custom_device_index(-1)
+        torch.accelerator.set_device_index(-1)
         storage = torch.UntypedStorage(4, device=torch.device("openreg"))
         self.assertEqual(torch.serialization.location_tag(storage), "openreg")
 
-        self.module.set_custom_device_index(0)
+        torch.accelerator.set_device_index(0)
         storage = torch.UntypedStorage(4, device=torch.device("openreg"))
         self.assertEqual(torch.serialization.location_tag(storage), "openreg:0")
 
